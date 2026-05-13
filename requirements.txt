@@ -1,8 +1,10 @@
-ultralytics>=8.0.0
-opencv-python>=4.8.0
-easyocr>=1.7.0
-streamlit>=1.28.0
-reportlab>=4.0.0
-numpy>=1.24.0
-Pillow>=10.0.0
-qrcode>=7.0.0
+# Pin known working versions for Streamlit Cloud deploys
+ultralytics==8.4.49
+opencv-python-headless==4.13.0.92
+easyocr==1.7.2
+streamlit==1.57.0
+reportlab==4.5.1
+numpy==2.4.4
+Pillow==12.2.0
+qrcode==8.2
+setuptools<82
