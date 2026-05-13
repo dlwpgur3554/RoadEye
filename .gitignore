@@ -1,0 +1,16 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pt
+*.mp4
+*.avi
+*.mov
+samples/
+outputs/
+.streamlit/secrets.toml
+.DS_Store
+.idea/
+.vscode/
+01.데이터/
+*.json
