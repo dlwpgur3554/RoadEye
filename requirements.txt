@@ -1,6 +1,6 @@
 # Pin known working versions for Streamlit Cloud deploys
 ultralytics==8.4.49
-opencv-python-headless==4.13.0.92
+opencv-python-headless==4.11.0.86
 easyocr==1.7.2
 streamlit==1.57.0
 reportlab==4.5.1
