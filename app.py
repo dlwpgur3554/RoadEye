@@ -63,7 +63,7 @@ st.divider()
 
 
 # ---------- analyzer cache ----------
-@st.cache_resource(show_spinner="AI 모델 로딩 중…")
+@st.cache_resource
 def get_analyzer() -> RoadEyeAnalyzer:
     return RoadEyeAnalyzer(model_path="yolov8n.pt", conf=0.35, imgsz=640)
 
@@ -115,18 +115,25 @@ if not run:
 
 
 # ---------- run analysis ----------
-analyzer = get_analyzer()
+try:
+    analyzer = get_analyzer()
+except Exception as exc:
+    st.error(f"AI 모델 로딩에 실패했습니다: {exc}")
+    st.stop()
+
 analyzer.registry.tracks.clear()
 analyzer._violations.clear()
 analyzer._reported.clear()
 
-progress = st.progress(0.0, text="영상 분석 중…")
+progress = st.progress(0)
 status = st.empty()
+status.text("영상 분석 중…")
 start = time.time()
 
 
 def on_progress(p: float):
-    progress.progress(min(1.0, p), text=f"영상 분석 중… {int(p*100)}%")
+    progress.progress(min(1.0, p))
+    status.text(f"영상 분석 중… {int(min(1.0, p) * 100)}%")
 
 
 violations: list[Violation] = analyzer.analyze_video(
@@ -149,52 +156,41 @@ st.success(f"✅ 위반 {len(violations)}건 감지 — 처리 시간 {elapsed:.
 
 # build a quick re-detection cache for the snapshot frames (to allow plate OCR + blur)
 for i, v in enumerate(violations, start=1):
-    with st.container(border=True):
-        col_img, col_info = st.columns([1.2, 1])
+        with st.container():
+            col_img, col_info = st.columns([1.2, 1])
 
-        with col_img:
-            snap = v.snapshot
-            if snap is None:
-                st.write("(스냅샷 없음)")
-            else:
-                # re-detect on the snapshot to identify all vehicles for blur
-                dets = analyzer.detections_on_frame(snap)
-                # highlight violating vehicle bbox
-                annotated = draw_overlay(snap, dets, lanes=analyzer.lanes,
-                                         highlight_track_id=v.track_id)
-                if do_blur:
-                    annotated = anonymize_snapshot(annotated, dets, keep_track_id=v.track_id)
-                # convert BGR->RGB for st.image
-                rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
-                st.image(rgb, caption=f"감지 시점 스냅샷 ({seconds_to_timestamp(v.time_sec)})",
-                         use_container_width=True)
+            with col_img:
+                snap = v.snapshot
+                if snap is None:
+                    st.write("(스냅샷 없음)")
+                else:
+                    dets = analyzer.detections_on_frame(snap)
+                    annotated = draw_overlay(snap, dets, lanes=analyzer.lanes,
+                                             highlight_track_id=v.track_id)
+                    if do_blur:
+                        annotated = anonymize_snapshot(annotated, dets, keep_track_id=v.track_id)
+                    rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
+                    st.image(rgb, caption=f"감지 시점 스냅샷 ({seconds_to_timestamp(v.time_sec)})",
+                             use_container_width=True)
 
-        with col_info:
-            badge_cls = f"badge-{v.type_key}"
-            st.markdown(
-                f'<span class="violation-badge {badge_cls}">{v.type_label}</span> '
-                f'<span style="color:#888;">#{i}</span>',
-                unsafe_allow_html=True,
-            )
-            st.markdown(f"**감지 시각**: `{seconds_to_timestamp(v.time_sec)}` "
-                        f"(frame {v.frame_idx})")
-            st.markdown(f"**차량 ID**: `#{v.track_id}`")
-            st.progress(v.confidence / 100.0, text=f"AI 신뢰도 {v.confidence:.0f}%")
-            if v.note:
-                st.caption(v.note)
+            with col_info:
+                st.markdown(f"**{v.type_label}**  #{i}")
+                st.markdown(f"**감지 시각**: `{seconds_to_timestamp(v.time_sec)}` (frame {v.frame_idx})")
+                st.markdown(f"**차량 ID**: `#{v.track_id}`")
+                st.progress(v.confidence / 100.0, text=f"AI 신뢰도 {v.confidence:.0f}%")
+                if v.note:
+                    st.caption(v.note)
 
-            # plate OCR on the snapshot, using the violating vehicle's bbox
-            plate_text = "—"
-            if do_ocr and v.snapshot is not None:
-                try:
-                    plate = read_plate(v.snapshot, v.bbox)
-                    if plate is not None:
-                        plate_text = plate.text
-                except Exception as exc:
-                    plate_text = f"OCR 오류: {exc}"
-            st.markdown("**차량 번호판**")
-            st.markdown(f'<div class="plate-chip">{plate_text}</div>', unsafe_allow_html=True)
-
+                plate_text = "—"
+                if do_ocr and v.snapshot is not None:
+                    try:
+                        plate = read_plate(v.snapshot, v.bbox)
+                        if plate is not None:
+                            plate_text = plate.text
+                    except Exception as exc:
+                        plate_text = f"OCR 오류: {exc}"
+                st.markdown("**차량 번호판**")
+                st.markdown(f'`{plate_text}`')
 st.divider()
 st.caption("⚠️ MVP 데모: 위반 룰은 룰베이스 휴리스틱이며, 정확도는 데모 수준입니다. "
            "실제 신고 자동화에는 추가 검증 단계가 필요합니다.")
