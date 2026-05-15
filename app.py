@@ -1,14 +1,14 @@
 """로드아이 (RoadEye) — Streamlit MVP
 
-블랙박스 영상을 업로드하면 AI가 위반 차량을 감지하고
+블랙박스 영상을 드래그앤드롭하면 AI가 위반 차량을 감지하고
 어떤 위반을 했는지 보여줍니다.
 """
 from __future__ import annotations
 
+import base64
 import os
 import sys
 import time
-import uuid
 from pathlib import Path
 
 # Force headless OpenCV mode BEFORE importing cv2
@@ -25,6 +25,7 @@ except ImportError as e:
     raise
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 from modules.detector import (
     RoadEyeAnalyzer,
@@ -33,7 +34,7 @@ from modules.detector import (
     draw_overlay,
 )
 from modules.ocr import anonymize_snapshot, read_plate
-from modules.utils import probe_video, seconds_to_timestamp, tempdir_for_session
+from modules.utils import probe_video, seconds_to_timestamp
 
 
 st.set_page_config(page_title="로드아이 RoadEye", page_icon="🚨", layout="wide")
@@ -82,64 +83,221 @@ def get_analyzer() -> RoadEyeAnalyzer:
     return RoadEyeAnalyzer(model_path="yolov8n.pt", conf=0.35, imgsz=640)
 
 
-# ---------- get sample videos ----------
-SAMPLES_DIR = Path(__file__).parent / "outputs" / "traffic_violation_videos"
-CATEGORIES = {
-    "신호위반": "🚦",
-    "중앙선침범": "↔️",
-    "안전모미착용": "🚫",
-    "진로변경위반": "🔄",
-}
+# ---------- video sources ----------
+VIDEOS_DIR = Path(__file__).parent / "outputs" / "traffic_violation_videos"
+VIDEO_FILES = [VIDEOS_DIR / f"{i}.mp4" for i in range(1, 6)]
 
 
-def get_sample_videos():
-    """Returns dict of category -> list of video paths"""
-    videos = {}
-    if SAMPLES_DIR.exists():
-        for cat in CATEGORIES.keys():
-            cat_dir = SAMPLES_DIR / cat
-            if cat_dir.exists():
-                videos[cat] = sorted(cat_dir.glob("*.mp4"))
-    return videos
+@st.cache_data(show_spinner=False)
+def get_thumbnail_base64(video_path: str) -> str:
+    """Extract a representative frame and encode as base64 JPEG."""
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        return ""
+    try:
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        # Seek to ~30% for a representative frame (avoids black opening frames)
+        target_frame = max(0, total // 3)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
+        ok, frame = cap.read()
+        if not ok:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            ok, frame = cap.read()
+        if not ok:
+            return ""
+    finally:
+        cap.release()
+
+    h, w = frame.shape[:2]
+    target_w = 320
+    scale = target_w / w
+    frame = cv2.resize(frame, (target_w, int(h * scale)))
+    ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+    if not ok:
+        return ""
+    return base64.b64encode(buf.tobytes()).decode("ascii")
 
 
-# ---------- sample videos UI ----------
-st.markdown("### 📺 샘플 영상 선택")
-st.caption("아래 샘플 영상을 클릭하면 자동으로 분석됩니다")
-
-samples = get_sample_videos()
-if not samples or all(not v for v in samples.values()):
-    st.warning("샘플 영상이 없습니다. 먼저 영상을 생성하세요.")
-    st.stop()
-
-# Create tabs for each category
-tabs = st.tabs([f"{CATEGORIES.get(cat, '')} {cat}" for cat in CATEGORIES.keys()])
-
-selected_video = None
-for tab, cat in zip(tabs, CATEGORIES.keys()):
-    with tab:
-        videos = samples.get(cat, [])
-        if not videos:
-            st.info(f"{cat} 샘플이 없습니다")
+def render_drag_drop_ui() -> None:
+    """Render draggable video cards + drop zone. On drop, navigates parent
+    with ?video=N which Streamlit reads via st.query_params."""
+    cards_html = ""
+    for i, video in enumerate(VIDEO_FILES, start=1):
+        if not video.exists():
             continue
-        
-        cols = st.columns(min(3, len(videos)))
-        for idx, video_path in enumerate(videos):
-            with cols[idx % len(cols)]:
-                if st.button(f"📹 영상 {idx+1}", key=f"select_{cat}_{idx}", use_container_width=True):
-                    st.session_state["selected_video"] = str(video_path)
-                    selected_video = str(video_path)
+        thumb = get_thumbnail_base64(str(video))
+        if not thumb:
+            continue
+        cards_html += f"""
+        <div class="video-card" draggable="true" data-video-id="{i}">
+            <img src="data:image/jpeg;base64,{thumb}" alt="영상 {i}"/>
+            <div class="video-label">📹 영상 {i}</div>
+        </div>
+        """
 
-# Get selected video from session state
-if "selected_video" not in st.session_state:
-    st.info("👆 분석할 영상을 선택해주세요")
+    html = f"""
+    <style>
+      * {{ box-sizing: border-box; }}
+      .roadeye-dnd {{
+          font-family: -apple-system, 'Segoe UI', sans-serif;
+          padding: 8px 0;
+      }}
+      .video-row {{
+          display: flex;
+          gap: 14px;
+          flex-wrap: wrap;
+          justify-content: center;
+          padding: 8px 0 24px 0;
+      }}
+      .video-card {{
+          width: 200px;
+          cursor: grab;
+          border-radius: 12px;
+          overflow: hidden;
+          background: #1e293b;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+          transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+          border: 2px solid transparent;
+          user-select: none;
+      }}
+      .video-card:hover {{
+          transform: translateY(-4px);
+          box-shadow: 0 8px 20px rgba(59,130,246,0.3);
+          border-color: #3b82f6;
+      }}
+      .video-card:active {{ cursor: grabbing; opacity: 0.7; }}
+      .video-card img {{
+          width: 100%;
+          height: 120px;
+          object-fit: cover;
+          display: block;
+          pointer-events: none;
+      }}
+      .video-card .video-label {{
+          color: #f1f5f9;
+          padding: 10px;
+          text-align: center;
+          font-weight: 700;
+          font-size: 0.95rem;
+      }}
+      .drop-zone {{
+          margin-top: 8px;
+          padding: 60px 20px;
+          border: 3px dashed #94a3b8;
+          border-radius: 16px;
+          text-align: center;
+          color: #64748b;
+          background: #f8fafc;
+          transition: all 0.2s;
+      }}
+      .drop-zone.over {{
+          border-color: #ef4444;
+          background: #fee2e2;
+          color: #991b1b;
+          transform: scale(1.02);
+      }}
+      .drop-zone .icon {{
+          font-size: 3rem;
+          margin-bottom: 8px;
+          line-height: 1;
+      }}
+      .drop-zone .title {{
+          font-size: 1.15rem;
+          font-weight: 700;
+          margin-bottom: 6px;
+      }}
+      .drop-zone .sub {{
+          font-size: 0.9rem;
+          opacity: 0.85;
+      }}
+    </style>
+
+    <div class="roadeye-dnd">
+      <div class="video-row">{cards_html}</div>
+      <div class="drop-zone" id="roadeye-dropzone">
+          <div class="icon">📥</div>
+          <div class="title">여기에 영상을 드래그해서 놓으세요</div>
+          <div class="sub">놓는 즉시 AI가 위반 분석을 시작합니다</div>
+      </div>
+    </div>
+
+    <script>
+      (function() {{
+          const cards = document.querySelectorAll('.video-card');
+          const zone = document.getElementById('roadeye-dropzone');
+
+          cards.forEach(card => {{
+              card.addEventListener('dragstart', e => {{
+                  e.dataTransfer.setData('text/plain', card.dataset.videoId);
+                  e.dataTransfer.effectAllowed = 'copy';
+              }});
+          }});
+
+          zone.addEventListener('dragover', e => {{
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'copy';
+              zone.classList.add('over');
+          }});
+          zone.addEventListener('dragleave', () => zone.classList.remove('over'));
+          zone.addEventListener('drop', e => {{
+              e.preventDefault();
+              zone.classList.remove('over');
+              const id = e.dataTransfer.getData('text/plain');
+              if (id) {{
+                  zone.querySelector('.title').textContent = '영상 ' + id + ' 분석 시작...';
+                  zone.querySelector('.icon').textContent = '⏳';
+                  // navigate parent so Streamlit picks up the selection.
+                  // include a timestamp so re-dropping the same video still triggers a rerun.
+                  const url = new URL(window.parent.location.href);
+                  url.searchParams.set('video', id);
+                  url.searchParams.set('ts', Date.now().toString());
+                  window.parent.location.href = url.toString();
+              }}
+          }});
+      }})();
+    </script>
+    """
+    components.html(html, height=460)
+
+
+# ---------- main flow ----------
+selected_id_raw = st.query_params.get("video")
+selected_id: int | None = None
+if selected_id_raw is not None:
+    try:
+        n = int(selected_id_raw)
+        if 1 <= n <= len(VIDEO_FILES) and VIDEO_FILES[n - 1].exists():
+            selected_id = n
+    except ValueError:
+        selected_id = None
+
+if selected_id is None:
+    # Show drag-drop landing UI
+    missing = [str(v) for v in VIDEO_FILES if not v.exists()]
+    if missing:
+        st.warning(
+            "다음 샘플 영상이 없습니다. 먼저 영상을 준비해주세요:\n\n"
+            + "\n".join(f"- `{m}`" for m in missing)
+        )
+        st.stop()
+
+    st.markdown("### 📺 분석할 영상을 선택하세요")
+    st.caption("아래 영상 카드를 드래그해서 드롭 존에 놓으면 자동으로 분석이 시작됩니다")
+    render_drag_drop_ui()
     st.stop()
 
-selected_video = st.session_state["selected_video"]
 
-# Show selected video preview
-st.divider()
-st.markdown("### 📹 선택된 영상")
+# ---------- selected video preview ----------
+selected_video = str(VIDEO_FILES[selected_id - 1])
+
+top_left, top_right = st.columns([3, 1])
+with top_left:
+    st.markdown(f"### 📹 영상 {selected_id} 분석 중")
+with top_right:
+    if st.button("🔄 다른 영상 선택", use_container_width=True):
+        st.query_params.clear()
+        st.rerun()
+
 st.video(selected_video)
 
 meta = probe_video(Path(selected_video))
@@ -149,9 +307,7 @@ col_b.metric("FPS", f"{meta.fps:.1f}")
 col_c.metric("해상도", f"{meta.width}×{meta.height}")
 col_d.metric("프레임 수", f"{meta.frame_count}")
 
-run = st.button("🔍 분석 시작", type="primary", use_container_width=True)
-if not run:
-    st.stop()
+st.divider()
 
 
 # ---------- run analysis ----------
@@ -194,7 +350,6 @@ if not violations:
 
 st.success(f"✅ 위반 {len(violations)}건 감지 — 처리 시간 {elapsed:.1f}초")
 
-# Display violations
 for i, v in enumerate(violations, start=1):
     with st.container():
         col_img, col_info = st.columns([1.2, 1])

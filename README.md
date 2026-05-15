@@ -38,7 +38,20 @@ streamlit run app.py
    - 추출된 번호판
 
 ---
+## JPG 이미지 시퀀스를 MP4로 변환하기
 
+`01.데이터` 안에 JPG 이미지가 있을 때, 5 FPS로 묶어 약 5개의 MP4 파일을 만들려면 다음 스크립트를 사용하세요.
+
+```powershell
+cd roadeye-mvp
+python convert_jpgs_to_videos.py --source "01.데이터\your_image_folder" --output outputs/jpg_videos --num-videos 5 --fps 5
+```
+
+- 출력 비디오 파일은 `outputs/jpg_videos/video_01.mp4` 등으로 생성됩니다.
+- 이미지 파일 이름 순서대로 묶습니다.
+- 프레임 크기가 서로 다르면 첫 번째 이미지 크기에 맞춰 리사이즈합니다.
+
+---
 ## 감지 위반 유형
 
 | 키 | 라벨 | 룰 (간략) | 정확도 |
