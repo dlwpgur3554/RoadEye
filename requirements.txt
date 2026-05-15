@@ -1,6 +1,6 @@
 # Pin known working versions for Streamlit Cloud deploys
-# Install opencv-python-headless FIRST to prevent opencv-python from being installed
-opencv-python-headless==4.11.0.86
+# IMPORTANT: opencv-python-headless must come FIRST, no GUI dependencies
+opencv-python-headless==4.11.0.86 ; python_version >= "3.10"
 numpy==1.26.4
 setuptools<82
 ultralytics==8.4.49
