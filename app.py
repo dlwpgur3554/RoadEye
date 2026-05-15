@@ -121,14 +121,24 @@ def render_click_picker() -> None:
     """Render clickable video cards. Click sets ?video=N via st.query_params."""
     st.markdown("""
     <style>
-      .roadeye-thumb img {
+      .roadeye-thumb {
+        aspect-ratio: 16 / 9;
+        overflow: hidden;
         border-radius: 10px;
         border: 2px solid #334155;
+        background: #0f172a;
         transition: border-color .15s, transform .15s;
+        margin-bottom: 6px;
       }
-      .roadeye-thumb:hover img {
+      .roadeye-thumb:hover {
         border-color: #fbbf24;
         transform: translateY(-2px);
+      }
+      .roadeye-thumb img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
       }
     </style>
     """, unsafe_allow_html=True)
@@ -142,8 +152,7 @@ def render_click_picker() -> None:
             if thumb:
                 st.markdown(
                     f'<div class="roadeye-thumb">'
-                    f'<img src="data:image/jpeg;base64,{thumb}" '
-                    f'style="width:100%; display:block;" alt="영상 {idx}"/>'
+                    f'<img src="data:image/jpeg;base64,{thumb}" alt="영상 {idx}"/>'
                     f'</div>',
                     unsafe_allow_html=True,
                 )
