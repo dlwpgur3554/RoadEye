@@ -1,6 +1,6 @@
 """로드아이 (RoadEye) — Streamlit MVP
 
-블랙박스 영상을 드래그앤드롭하면 AI가 위반 차량을 감지하고
+블랙박스 샘플 영상을 클릭하면 AI가 위반 차량을 감지하고
 어떤 위반을 했는지 보여줍니다.
 """
 from __future__ import annotations
@@ -25,7 +25,6 @@ except ImportError as e:
     raise
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 from modules.detector import (
     RoadEyeAnalyzer,
@@ -118,146 +117,40 @@ def get_thumbnail_base64(video_path: str) -> str:
     return base64.b64encode(buf.tobytes()).decode("ascii")
 
 
-def render_drag_drop_ui() -> None:
-    """Render draggable video cards + drop zone. On drop, navigates parent
-    with ?video=N which Streamlit reads via st.query_params."""
-    cards_html = ""
-    for i, video in enumerate(VIDEO_FILES, start=1):
+def render_click_picker() -> None:
+    """Render clickable video cards. Click sets ?video=N via st.query_params."""
+    st.markdown("""
+    <style>
+      .roadeye-thumb img {
+        border-radius: 10px;
+        border: 2px solid #334155;
+        transition: border-color .15s, transform .15s;
+      }
+      .roadeye-thumb:hover img {
+        border-color: #fbbf24;
+        transform: translateY(-2px);
+      }
+    </style>
+    """, unsafe_allow_html=True)
+
+    cols = st.columns(len(VIDEO_FILES))
+    for idx, (col, video) in enumerate(zip(cols, VIDEO_FILES), start=1):
         if not video.exists():
             continue
         thumb = get_thumbnail_base64(str(video))
-        if not thumb:
-            continue
-        cards_html += f"""
-        <div class="video-card" draggable="true" data-video-id="{i}">
-            <img src="data:image/jpeg;base64,{thumb}" alt="영상 {i}"/>
-            <div class="video-label">📹 영상 {i}</div>
-        </div>
-        """
-
-    html = f"""
-    <style>
-      * {{ box-sizing: border-box; }}
-      .roadeye-dnd {{
-          font-family: -apple-system, 'Segoe UI', sans-serif;
-          padding: 8px 0;
-      }}
-      .video-row {{
-          display: flex;
-          gap: 14px;
-          flex-wrap: wrap;
-          justify-content: center;
-          padding: 8px 0 24px 0;
-      }}
-      .video-card {{
-          width: 200px;
-          cursor: grab;
-          border-radius: 12px;
-          overflow: hidden;
-          background: #1e293b;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-          transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
-          border: 2px solid transparent;
-          user-select: none;
-      }}
-      .video-card:hover {{
-          transform: translateY(-4px);
-          box-shadow: 0 8px 20px rgba(59,130,246,0.3);
-          border-color: #3b82f6;
-      }}
-      .video-card:active {{ cursor: grabbing; opacity: 0.7; }}
-      .video-card img {{
-          width: 100%;
-          height: 120px;
-          object-fit: cover;
-          display: block;
-          pointer-events: none;
-      }}
-      .video-card .video-label {{
-          color: #f1f5f9;
-          padding: 10px;
-          text-align: center;
-          font-weight: 700;
-          font-size: 0.95rem;
-      }}
-      .drop-zone {{
-          margin-top: 8px;
-          padding: 60px 20px;
-          border: 3px dashed #94a3b8;
-          border-radius: 16px;
-          text-align: center;
-          color: #64748b;
-          background: #f8fafc;
-          transition: all 0.2s;
-      }}
-      .drop-zone.over {{
-          border-color: #ef4444;
-          background: #fee2e2;
-          color: #991b1b;
-          transform: scale(1.02);
-      }}
-      .drop-zone .icon {{
-          font-size: 3rem;
-          margin-bottom: 8px;
-          line-height: 1;
-      }}
-      .drop-zone .title {{
-          font-size: 1.15rem;
-          font-weight: 700;
-          margin-bottom: 6px;
-      }}
-      .drop-zone .sub {{
-          font-size: 0.9rem;
-          opacity: 0.85;
-      }}
-    </style>
-
-    <div class="roadeye-dnd">
-      <div class="video-row">{cards_html}</div>
-      <div class="drop-zone" id="roadeye-dropzone">
-          <div class="icon">📥</div>
-          <div class="title">여기에 영상을 드래그해서 놓으세요</div>
-          <div class="sub">놓는 즉시 AI가 위반 분석을 시작합니다</div>
-      </div>
-    </div>
-
-    <script>
-      (function() {{
-          const cards = document.querySelectorAll('.video-card');
-          const zone = document.getElementById('roadeye-dropzone');
-
-          cards.forEach(card => {{
-              card.addEventListener('dragstart', e => {{
-                  e.dataTransfer.setData('text/plain', card.dataset.videoId);
-                  e.dataTransfer.effectAllowed = 'copy';
-              }});
-          }});
-
-          zone.addEventListener('dragover', e => {{
-              e.preventDefault();
-              e.dataTransfer.dropEffect = 'copy';
-              zone.classList.add('over');
-          }});
-          zone.addEventListener('dragleave', () => zone.classList.remove('over'));
-          zone.addEventListener('drop', e => {{
-              e.preventDefault();
-              zone.classList.remove('over');
-              const id = e.dataTransfer.getData('text/plain');
-              if (id) {{
-                  zone.querySelector('.title').textContent = '영상 ' + id + ' 분석 시작...';
-                  zone.querySelector('.icon').textContent = '⏳';
-                  // navigate parent so Streamlit picks up the selection.
-                  // include a timestamp so re-dropping the same video still triggers a rerun.
-                  const url = new URL(window.parent.location.href);
-                  url.searchParams.set('video', id);
-                  url.searchParams.set('ts', Date.now().toString());
-                  window.parent.location.href = url.toString();
-              }}
-          }});
-      }})();
-    </script>
-    """
-    components.html(html, height=460)
+        with col:
+            if thumb:
+                st.markdown(
+                    f'<div class="roadeye-thumb">'
+                    f'<img src="data:image/jpeg;base64,{thumb}" '
+                    f'style="width:100%; display:block;" alt="영상 {idx}"/>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            if st.button(f"📹 영상 {idx} 분석", key=f"pick_video_{idx}",
+                         use_container_width=True, type="primary"):
+                st.query_params["video"] = str(idx)
+                st.rerun()
 
 
 # ---------- main flow ----------
@@ -282,8 +175,8 @@ if selected_id is None:
         st.stop()
 
     st.markdown("### 📺 분석할 영상을 선택하세요")
-    st.caption("아래 영상 카드를 드래그해서 드롭 존에 놓으면 자동으로 분석이 시작됩니다")
-    render_drag_drop_ui()
+    st.caption("아래 영상 카드를 클릭하면 자동으로 위반 분석이 시작됩니다")
+    render_click_picker()
     st.stop()
 
 
