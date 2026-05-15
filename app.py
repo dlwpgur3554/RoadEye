@@ -5,9 +5,14 @@
 """
 from __future__ import annotations
 
+import os
 import time
 import uuid
 from pathlib import Path
+
+# Force OpenCV to use headless mode (required for Streamlit Cloud)
+os.environ['OPENCV_FFMPEG_DEBUG'] = '0'
+os.environ['OPENCV_LOG_LEVEL'] = 'OFF'
 
 import cv2
 import streamlit as st

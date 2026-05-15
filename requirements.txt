@@ -1,10 +1,11 @@
 # Pin known working versions for Streamlit Cloud deploys
-ultralytics==8.4.49
+# Install opencv-python-headless FIRST to prevent opencv-python from being installed
 opencv-python-headless==4.11.0.86
+numpy==1.26.4
+setuptools<82
+ultralytics==8.4.49
 easyocr==1.7.2
 streamlit==1.57.0
 reportlab==4.5.1
-numpy==1.26.4
 Pillow==12.2.0
 qrcode==8.2
-setuptools<82
