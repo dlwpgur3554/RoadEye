@@ -6,15 +6,24 @@
 from __future__ import annotations
 
 import os
+import sys
 import time
 import uuid
 from pathlib import Path
 
-# Force OpenCV to use headless mode (required for Streamlit Cloud)
+# Force headless OpenCV mode BEFORE importing cv2
 os.environ['OPENCV_FFMPEG_DEBUG'] = '0'
 os.environ['OPENCV_LOG_LEVEL'] = 'OFF'
+os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 
-import cv2
+try:
+    import cv2
+except ImportError as e:
+    if "libGL.so.1" in str(e):
+        print(f"Warning: OpenCV libGL error - {e}", file=sys.stderr)
+        raise
+    raise
+
 import streamlit as st
 
 from modules.detector import (

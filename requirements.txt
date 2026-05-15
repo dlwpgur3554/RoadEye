@@ -1,11 +1,24 @@
 # Pin known working versions for Streamlit Cloud deploys
-# IMPORTANT: opencv-python-headless must come FIRST, no GUI dependencies
-opencv-python-headless==4.11.0.86 ; python_version >= "3.10"
+# opencv-python-headless MUST come first, with no GUI/display dependencies
+# See: https://github.com/streamlit/streamlit/wiki/Deploying-Streamlit-Apps
+
+# Core dependencies (install in order)
+opencv-python-headless==4.11.0.86
 numpy==1.26.4
+Pillow==12.2.0
+
+# Build tools (minimal)
 setuptools<82
+
+# Main dependencies
+streamlit==1.57.0
 ultralytics==8.4.49
 easyocr==1.7.2
-streamlit==1.57.0
+
+# Utilities
 reportlab==4.5.1
-Pillow==12.2.0
 qrcode==8.2
+
+# CRITICAL: Do not allow opencv-python (GUI version) to be installed
+# If pip tries to install it, the build will fail
+# Use: pip install --no-deps ultralytics if needed
