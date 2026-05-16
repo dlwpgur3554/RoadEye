@@ -84,7 +84,7 @@ def get_analyzer() -> RoadEyeAnalyzer:
 
 # ---------- video sources ----------
 VIDEOS_DIR = Path(__file__).parent / "outputs" / "traffic_violation_videos"
-VIDEO_FILES = [VIDEOS_DIR / f"{i}.mp4" for i in range(1, 6)]
+VIDEO_FILES = [VIDEOS_DIR / f"{i}.mp4" for i in range(1, 4)]
 
 
 @st.cache_data(show_spinner=False)
@@ -200,7 +200,8 @@ with top_right:
         st.query_params.clear()
         st.rerun()
 
-st.video(selected_video)
+with open(selected_video, "rb") as _vf:
+    st.video(_vf.read(), format="video/mp4")
 
 meta = probe_video(Path(selected_video))
 col_a, col_b, col_c, col_d = st.columns(4)
